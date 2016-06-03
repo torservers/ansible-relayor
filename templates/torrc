@@ -1,51 +1,68 @@
 # ansible generated torrc
 RunAsDaemon {{ tor_RunAsDaemon }}
-User {{ tor_user }}
-
-PidFile {{ tor_PidDir }}/{{ item[0] }}_{{ item.1.orport }}.pid
-Log {{ tor_LogLevel }} file {{ tor_LogDir }}/{{ item[0] }}_{{ item.1.orport }}.log
-DataDirectory {{ tor_DataDir }}/{{ item[0] }}_{{ item.1.orport }}
-
-ORPort {{ item[0] }}:{{ item.1.orport }}
-{% if item.1.dirport != 0 %}
-DirPort {{ item[0] }}:{{ item.1.dirport }}
+{% if ansible_os_family == 'FreeBSD' %}
+PidFile {{ tor_PidDir }}/{{ item.0.ipv4 }}_{{ item.1.orport }}/pid
 {% endif %}
-Address {{ item[0] }}
-OutboundBindAddress {{ item[0] }}
+Log {{ tor_LogLevel }} syslog
+
+User _tor-{{ item.0.ipv4 }}_{{ item.1.orport }}
+
+DataDirectory {{ tor_DataDir }}/{{ item.0.ipv4 }}_{{ item.1.orport }}
+
+ORPort {{ item.0.ipv4 }}:{{ item.1.orport }}
+{% if item.0.ipv6 != "" and item.0.ipv6 != "False" and tor_IPv6 == True %}
+ORPort [{{item.0.ipv6}}]:{{item.1.orport}}
+{% endif %}
+{% if item.1.dirport != 0 %}
+DirPort {{ item.0.ipv4 }}:{{ item.1.dirport }}
+{% endif %}
+Address {{ item.0.ipv4 }}
+OutboundBindAddress {{ item.0.ipv4 }}
 SocksPort {{ tor_SocksPort }}
+OfflineMasterKey 1
 {% if tor_enableControlSocket == True %}
-ControlSocket {{ tor_DataDir }}/{{ item[0] }}_{{ item.1.orport }}/controlsocket
+ControlSocket {{ tor_DataDir }}/{{ item.0.ipv4 }}_{{ item.1.orport }}/controlsocket
+{% else %}
+ControlSocket 0
+CookieAuthentication 0
 {% endif %}
 
 {% if tor_ContactInfo is defined %}
 ContactInfo {{ tor_ContactInfo }}
 {% endif %}
 
-{% if tor_fingerprints is defined %}
-
-{# if the user provided us with tor_nicknameprefix, find the current tor fingerprint and construct nickname #}
-{% if tor_nicknameprefix is defined %}
-{% for fingerprint in tor_fingerprints.results -%}
-{% if fingerprint.item.0 == item.0 and fingerprint.item[1].orport == item.1.orport %}
-Nickname {{tor_nicknameprefix}}{{fingerprint.stdout[0:4]}}
-{% endif %}
-{%- endfor %}
+{% if tor_nicknamefile is defined %}
+Nickname {{ lookup('csvfile', inventory_hostname~'-'~item.0.ipv4~'_'~item.1.orport~' file='~tor_nicknamefile~' delimiter=,')}}
+{% elif tor_nickname is defined %}
+Nickname {{ tor_nickname }}
 {% endif %}
 
-{# perform match() on potentially malicious input #}
-MyFamily {% for host in play_hosts %}{% for fingerprint in hostvars[host]['tor_fingerprints']['results'] -%}{% if fingerprint.stdout|match("^[A-F0-9]{40}$") %}${{ fingerprint.stdout }},{% endif %}{%- endfor %}{% endfor %}
-{% endif %}
+MyFamily {{ family.stdout }}
 
 
 {% if tor_ExitRelay == True %}
 # we are an exit relay!
+ExitRelay 1
 ExitPolicy {{ tor_ExitPolicy }}
+{% if item.0.ipv6 != "" and item.0.ipv6 != "False" and tor_IPv6 == True and tor_IPv6Exit == True %}
+IPv6Exit 1
+{% endif %}
+{% if tor_ExitNoticePage == True %}
+DirPortFrontPage {{ tor_ConfDir }}/tor-exit-notice.html
+{% endif %}
 {% else %}
+ExitRelay 0
 ExitPolicy reject *:*
 {% endif %}
 
 ShutdownWaitLength {{ tor_shutdownwaitlength }}
 
+{% if tor_PublishServerDescriptor is defined %}
+PublishServerDescriptor {{ tor_PublishServerDescriptor }}
+{% endif %}
+{% if tor_HeartbeatPeriod is defined %}
+HeartbeatPeriod {{ tor_HeartbeatPeriod }}
+{% endif %}
 {% if tor_SafeLogging is defined %}
 SafeLogging {{ tor_SafeLogging }}
 {% endif %}
@@ -67,9 +84,6 @@ EntryStatistics {{ tor_EntryStatistics }}
 {% if tor_ExitPortStatistics is defined %}
 ExitPortStatistics {{ tor_ExitPortStatistics }}
 {% endif %}
-{% if tor_IPv6Exit is defined %}
-IPv6Exit {{ tor_IPv6Exit }}
-{% endif %}
 {% if tor_MaxOnionQueueDelay is defined %}
 MaxOnionQueueDelay {{ tor_MaxOnionQueueDelay }}
 {% endif %}
@@ -81,6 +95,9 @@ PortForwarding {{ tor_PortForwarding }}
 {% endif %}
 {% if tor_AccountingMax is defined %}
 AccountingMax {{ tor_AccountingMax }}
+{% endif %}
+{% if tor_AccountingRule is defined %}
+AccountingRule {{ tor_AccountingRule }}
 {% endif %}
 {% if tor_AccountingStart is defined %}
 AccountingStart {{ tor_AccountingStart }}

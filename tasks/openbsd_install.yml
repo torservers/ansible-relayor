@@ -2,45 +2,38 @@
 
 - name: Setup OpenBSD specific variables (set_fact)
   set_fact:
-    tor_DataDir: /var/tor
-    tor_PidDir: /var/tor/pids
+    tor_DataDir: /var/tor-instances
+    tor_ConfDir: /etc/tor/enabled
   tags:
-   - configure
+   - reconfigure
+   - renewkey
    - createdir
 
-- name: Gather current tor install state (OpenBSD)
-  command: "pkg_info -qe tor-*"
-  ignore_errors: yes
-  register: torpkg
-
-# the following task fails HARD on purpose (if ports are not there)
-# TODO: add an opt-in var that takes care of installing ports
-- name: Install tor from ports (OpenBSD)
-  sudo: yes
-  shell: "cd /usr/ports/net/tor && make install"
-  when: torpkg.rc == 1
+- name: Ensure Tor is installed (OpenBSD)
+  become: yes
+  openbsd_pkg: name=tor state=present
+  tags:
+   - install
 
 - name: Gather current system-wide file descriptor limits (OpenBSD)
   shell: "sysctl kern.maxfiles|cut -d= -f2"
   register: currentlimits
 
 - name: Ensure system-wide runtime file descriptor limits are reasonable (OpenBSD)
-  sudo: yes
+  become: yes
   command: "sysctl kern.maxfiles=20000"
   when: currentlimits.stdout|int < 20000
 
 - name: Ensure system-wide persistent file descriptor limits are reasonable (OpenBSD)
-  sudo: yes
+  become: yes
   lineinfile: dest=/etc/sysctl.conf regexp=^kern.maxfiles line="kern.maxfiles=20000" create=yes
   when: currentlimits.stdout|int < 20000
 
 # We rise openfiles limits for every tor instance separately.
 # An instance is identified by its rc.d file name.
 - name: Ensure Tor process file descriptor limits are reasonable (OpenBSD)
-  sudo: yes
-  lineinfile: "dest=/etc/login.conf line='tor{{ item[0]| replace('.','_') }}_{{ item.1.orport }}::openfiles-max=13500::tc=daemon:'"
+  become: yes
+  lineinfile: "dest=/etc/login.conf line='tor{{ item.0.ipv4| replace('.','_') }}_{{ item.1.orport }}::openfiles-max=13500::tc=daemon:'"
   with_nested:
    - tor_ips
    - tor_ports
-  #TODO
-  #notify: restart tor
